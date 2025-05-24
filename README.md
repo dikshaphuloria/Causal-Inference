@@ -16,7 +16,7 @@ Covariates: Student & school-level features (selfrpt, race, gender, fgen, urban 
 
 Goal: Estimate the Average Treatment Effect of a growth mindset intervention (z) on student achievement (y).
 
-Results: Based on our results for estimated Average Treatment Effect (ATE) and the associated 95% confidence interval [0.387205 , 0.442271] by
+Results: Based on our results for estimated Average Treatment Effect (ATE) and the associated 95% confidence interval [0.3871195, 0.4423565] by
 AIPW, we conclude that students who received the growth mindset intervention (z = 1) experienced a statistically significant and positive impact on their academic achievement (y). These findings challenge the traditional fixed mindset belief that intelligence is static by showing that a brief, nudge-like intervention can enhance student performance, consistent with the principles of a growth mindset.
 
 Project summary can be found here:
