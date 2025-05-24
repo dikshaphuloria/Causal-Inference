@@ -9,7 +9,9 @@ Sample: 10,391 students from U.S. public high schools.
 
 Variables:
 y: Student Achievement (Outcome)
+
 z: Growth mindset intervention (Treatment)
+
 Covariates: Student & school-level features (selfrpt, race, gender, fgen, urban ,mindset, test, sch_race, pov, size)
 
 Goal: Estimate the Average Treatment Effect of a growth mindset intervention (z) on student achievement (y).
@@ -23,6 +25,9 @@ STEPS TO ACCESS AND RUN THE FILE:
 NOTE : Prerequisite - RSTUDIO AS PLATFORM TO RUN THE FILE
 
 1) Download the Causal_Inference.RMD file.
+   
 2) Download the  data.csv file, make sure both the files are in same directory.
+   
 3) Launch RSTUDIO and Run Causal_Inference.RMD (make sure to download all necessary libraries)
+   
 4) Click preview to view the file in HTML format.
