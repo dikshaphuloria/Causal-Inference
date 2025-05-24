@@ -1,0 +1,329 @@
+---
+title: "Statistical Models And Computing Project"
+subtitle: "Causal Inference Analysis: Estimating the Effect of Growth Mindset Intervention on Student Achievement"
+author: "Diksha Phuloria"
+date: "09-05-2025"
+output: 
+  html_notebook:
+    toc: true
+---
+
+### 1. Introduction
+
+> The project investigates the contrasting beliefs of fixed and growth mindsets. The traditional belief is that intelligence is acquired at birth and cannot be substantially improved over time; known as fixed mindset, while a growth mindset suggests that intelligence can be developed through effort, learning, and perseverance.
+>
+> Our objective is to estimate the causal effect of a nudge-like intervention aimed at fostering a growth mindset on students' academic achievement. We use a synthetic dataset modeled after the National Study of Learning Mindsets (NSLM) and apply appropriate causal inference methods to control for confounding factors and estimate the average treatment effect (ATE).
+
+```{r, message=FALSE, warning=FALSE}
+#Importing necessary libraries
+library(tidyverse)
+library(dplyr)
+library(ggdag)
+library(cobalt)
+library(ggplot2)
+```
+
+</br>
+
+### 2. Data Loading
+
+```{r, message=FALSE, warning=FALSE}
+if (!file.exists("data.csv")) {
+  stop("data.csv not found in the working directory.")
+}
+
+data <- read.csv("data.csv")
+attach(data)
+```
+
+```{r}
+str(data)
+```
+> ABOUT DATASET VARIABLES:
+> The dataset includes a treatment variable (z), an outcome variable (y), and several covariates considered potential confounders.
+    
+    OUTCOME VARIABLE
+> `y`: Continuous measure of the student’s achievement
+
+
+    TREATMENT VARIABLE
+> `z`: Treatment generated
+>
+> z = 1: Student got the growth mindset intervention.
+>
+> z = 0: No intervention
+
+
+    CONFOUNDER
+> `selfrpt`: Student’s self-reported expectations for success in the future, a proxy for prior achievement, measured prior to treatment
+>
+> Range 1-7: (Extremely poorly to extremely well)
+>
+>`race`: Student race/ethnicity (categorical).
+>
+> Range 1-15
+>
+> `gender`: Student’s identified gender (categorical).
+>
+> 1 = female | 2 = male
+>
+> `fgen`: Indicator for whether student is the first in family to go to college.
+>
+> 1 = first generation | 0 = not first generation
+>
+> `urban`: School-level urbanicity of the school (categorical).
+>
+> 5 point scale with 0 being rural (not at all urban) and 4 being completely urban.
+>
+> `mindset`: School-level mean of students’ fixed mindsets; reported prior to the observed treatment.
+>
+> Higher values indicate the school had lower levels of fixed mindset upon entering the study.
+>
+> `test`: School-level achievement level, as measured by test scores and college preparation for the previous four cohorts of students.
+>
+> Higher values indicate higher level of achievement
+>
+> `sch_race`: School-level racial/ethnic minority composition.
+>
+> `pov`: School-level poverty concentration as measured by the percentage-age of students who are from families whose incomes fall below the federal poverty line.
+>
+> `size`: Total number of students in all four grade levels in the school. 
+>
+> `schoolid`: school ID's
+
+</br>
+
+### 3. Preprocessing Steps
+
+```{r}
+#Removing school ID and Checking for missing values
+data <- data %>% 
+  select(-schoolid)
+
+colSums(is.na(data))
+```
+
+> No missing values are present and the data is in standardized format. We have removed school ID to avoid any impact on treatment or achievement distribution for initial analysis.
+
+</br>
+
+### 4.  DAG: Causal Assumptions
+```{r}
+set.seed(42)
+dag <- dagify(
+  y ~ z + selfrpt + race + gender + fgen + urban + mindset + test + sch_race + pov + size,
+  z ~ selfrpt + race + gender + fgen + mindset + test + sch_race + pov + size + urban,
+  exposure = "z",
+  outcome = "y"
+)
+```
+
+> The diagram below represents the hypothesized causal relationships between the growth mindset intervention (z) and student achievement (y). Each arrow reflects a direct causal path and here we have considered all the variables impact treatment and outcome variables.
+
+```{r, fig.height=10}
+ggdag(dag, node_size = 22) +
+  theme_dag_grey_grid() +
+  ggtitle("Causal DAG: Growth Mindset Intervention on Achievement")
+```
+
+</br>
+
+### 5. Exploratory Data Analysis (EDA)
+
+> Before diving into the causal modeling, we begin with an exploratory data analysis (EDA) to understand the distribution of key variables and any potential imbalances between treated and control groups.
+
+```{r, fig.height=7}
+M = cor(data)
+corrplot::corrplot(M, method = 'pie', order = 'FPC', type = 'lower', diag = FALSE)
+```
+
+> PLOT 1: Correlation Matrix (Lower Triangle)
+>
+> The correlation plot assesses associations among the treatment (z), outcome (y), and covariates. A  positive correlation is observed between z and y, suggesting a potential relationship between the intervention and achievement. Importantly, z appears to have low correlations with most covariates, indicating minimal confounding from observed variables. However, as correlation alone cannot establish causality, we proceed to construct causal models to observe the true effect of z on y.
+
+```{r, fig.height=6}
+boxplot(y~z, xlab='Control (z=0), Treatment (z=1)', ylab = "Achievement (y)", main="Distribution of Achievement by Treatment", col=c("#c8add9", "#b3d4ae"))
+grid(col='darkgray')
+```
+> PLOT 2: Distribution of Achievement (Y) by Treatment (Z)
+>
+> The boxplot displays achievement (y) distributions for students who received the growth mindset intervention (z = 1) and those who did not (z = 0). Students who received the growth mindset intervention (z = 1) tend to have higher median and mean achievement scores compared to those who did not, with noticeable more outliers. While this suggests a potential positive effect of the intervention on academic achievement, it does not account for confounding factors. A causal inference model is needed to determine whether the observed difference is because of the treatment itself.
+
+```{r, fig.height=8}
+x_continuous <- data %>% 
+  select(z, mindset, test, sch_race, pov, size) %>%
+  pivot_longer(-z, names_to = "name", values_to = "value") %>%
+  mutate(treat = factor(z))
+
+ggplot(x_continuous, aes(x = value, fill = treat)) +
+  geom_density(lwd=1.1, alpha = 0.8) +
+  scale_fill_manual(values = c("#c8add9", "#b3d4ae"))+
+  facet_wrap(~name, scales = "free", ncol = 3) +
+  theme_linedraw() +
+  labs(title = "Distribution of Continuous Covariates by Z Treatment",
+       x = "Value", y = "Count", fill = "Z Treatment") +
+  theme(legend.position = "bottom")
+```
+> PLOT 3: Distribution of Continuous Covariates by Z Treatment
+>
+> The plots above shows that most variables are relatively balanced across treatment groups, with overlapping density curves suggesting minimal bias.
+
+```{r, fig.height=8}
+x_discrete <- data %>% 
+  select(z, selfrpt, race, gender, fgen, urban) %>%
+  pivot_longer(-z, names_to = "name", values_to = "value") %>%
+  mutate(treat = factor(z))
+
+
+ggplot(x_discrete, aes(x = value, fill = treat)) +
+  geom_bar(position = 'dodge', color = "black") +
+  scale_fill_manual(values = c("#c8add9", "#b3d4ae"))+
+  facet_wrap(~name, scales = "free", ncol = 3) +
+  theme_linedraw() +
+  labs(title = "Distribution of Discrete Covariates by Z Treatment",
+       x = "Value", y = "Count", fill = "Z Treatment") +
+  theme(legend.position = "bottom")
+```
+> PLOT 4: Distribution of Discrete Covariates by Z Treatment
+>
+> Discrete Plot reveals more visible imbalances. These patterns underscore the importance of adjusting for confounding variables before estimating causal effects.
+
+</br>
+
+### 6. Key Assumptions In Modelling The Causal Effect
+> • Consistency: The observed outcome equals the potential outcome under the received treatment.
+>
+> • Conditional randomization or no-unmeasured-confounding: Treatment assignment is independent of potential outcomes, given covariates.
+>
+> • Positivity: All units have a non-zero probability of receiving either treatment.
+>
+> • I.I.D Sampling: Independent and identically distributed units, enabling generalizability and inference via the Central Limit Theorem.
+
+</br>
+
+### 7. Model Building And Evaluation
+
+> We construct the AIPW ATE using below formula:
+
+$$
+\hat{\psi}_{\text{AIPW}} = \frac{1}{n} \sum_{i=1}^{n} \left[ \hat{\mu}_1(X_i) - \hat{\mu}_0(X_i) + \frac{Z_i(Y_i - \hat{\mu}_1(X_i))}{\hat{\pi}(X_i)} - \frac{(1 - Z_i)(Y_i - \hat{\mu}_0(X_i))}{1 - \hat{\pi}(X_i)} \right]
+$$
+
+```{r}
+#Selecting column names except outcome (y) and treatment (z)
+covariates <- data %>%
+  select(-y, -z) %>% colnames()
+
+# Create formula
+form_A <- paste0("z ~ ", paste(covariates, collapse=" + "))
+form_Y <- paste0("y ~ ", paste(covariates, collapse=" + "))
+
+print(form_A)
+print(form_Y)
+```
+
+```{r}
+# Fit separate outcome models for treated and control groups
+model0 <- glm(form_Y, data = data %>% filter(z == 0))
+model1 <- glm(form_Y, data = data %>% filter(z == 1))
+
+# Predict potential outcomes under treatment and control
+x <- data %>% select(all_of(covariates))
+mu0hat <- predict(model0, newdata = x, type = "response")
+mu1hat <- predict(model1, newdata = x, type = "response")
+
+# Plug-in ATE
+psi <- mean(mu1hat - mu0hat)
+cat("Plug-in ATE estimate:", psi, "\n")
+```
+
+```{r}
+#Calculating the propensity score
+pihat_fit <- glm(form_A, data = data, family = binomial)
+
+pihat <- predict(pihat_fit, newdata = x, type = "response")
+
+cat("Propensity Score: [", range(pihat), "] \n")
+```
+
+```{r}
+n <- nrow(data)
+#Outcome variable
+y <- pull(data, y)
+
+#Treatment Variable
+z <- pull(data, z)
+
+#Calculating the AIPW ATE score
+fhat <-  mu1hat - mu0hat + (z/pihat)*(y - mu1hat) - ((1-z)/(1-pihat))*(y - mu0hat) 
+
+ate_aipw <- mean(fhat)
+
+cat("AIPW ATE estimate:", ate_aipw, "\n")
+```
+
+```{r}
+#Constructing 95% Confidence Interval
+se_hat <- sqrt(var(fhat)/n)
+
+lower_ci <- ate_aipw - 1.96 * se_hat
+
+upper_ci <- ate_aipw + 1.96 * se_hat
+
+cat("95% Confidence Interval for ATE (AIPW): [", lower_ci, ",", upper_ci, "]\n")
+```
+
+>The plug-in ATE estimate suggests a positive effect of the intervention on achievement. The AIPW estimator further confirms this effect, with a 95% confidence interval that excludes zero, reinforcing statistical significance.
+
+```{r}
+prop_data <- data.frame(propensity_score = pihat, treatment = as.factor(z))
+
+# Plot the density of propensity scores by treatment group
+ggplot(prop_data, aes(x = propensity_score, fill = treatment)) +
+  geom_density(alpha = 0.8) +
+  scale_fill_manual(values = c("#c8add9", "#b3d4ae"))+
+  labs(title = "Propensity Score Distribution by AIPW",
+       x = "Propensity Score",
+       fill = "Treatment Group") +
+  theme_linedraw()
+```
+
+> The propensity score distribution plot shows good overlap between treatment groups, satisfying the positivity assumption.
+
+```{r, warning=FALSE, message=FALSE}
+love.plot(x = data[, covariates], treat = z, weights = z/pihat + (1-z)/(1-pihat), stars="raw")
+```
+> The Love plot confirms improved covariate balance after weighting, indicating that treatment and control groups are more comparable post-adjustment.
+
+</br>
+
+### 8. Results 
+> The Obtained ATE Values by different methods
+
+```{r}
+df_results <- data.frame(
+  Method = c("Plugin", "AIPW"),
+  Estimate = c(psi, ate_aipw)
+)
+
+print(df_results)
+```
+
+</br>
+
+### 9. Conclusion
+> Based on our results for estimated Average Treatment Effect (ATE) and the associated 95% confidence interval [0.3871195, 0.4423565], we conclude that students who received the growth mindset intervention (z = 1) experienced a statistically significant and positive impact on their academic achievement (y). Since the entire confidence interval lies above zero, this provides strong evidence that the intervention was effective. The propensity score ranges over [0.1775605, 0.4446301] suggesting that there were no evidence of positivity violations.
+>
+> These findings challenge the traditional fixed mindset belief that intelligence is static by showing that a brief, nudge-like intervention can enhance student performance, consistent with the principles of a growth mindset.
+
+</br>
+
+### 10. Discussion
+> Our results suggest a positive and statistically significant causal effect of the growth mindset intervention on student achievement. This supports the idea that brief, scalable nudges can influence students’ beliefs and outcomes.
+>
+> This conclusion rests on key causal assumptions: randomization, conditional ignorability, consistency and positivity. Since the data are observational and synthetic, results may be sensitive to unmeasured confounding. Future work could explore more subgroup effects, hidden confounders, or leverage nonlinear models to better capture treatment heterogeneity.
+
+</br>
+
+### 11. References
+> [1] D. S. Yeager et al., “A national experiment reveals where a growth mindset improves achievement,” Nature, vol. 573, no. 7774, pp. 364–369, Sep. 2019. https://www.nature.com/articles/s41586-019-1466-y
